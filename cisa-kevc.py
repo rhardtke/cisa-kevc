@@ -14,7 +14,7 @@ if not os.path.isdir(home_file_dir):
         exit(1)
 
 # kevc_file:
-# Format: CVE,Vendor/Project,Product,Vulnerability Name,Date Added to Catalog,Short Description,Action,Due Date,Notes
+# Format: cveID,vendorProject,product,vulnerabilityName,dateAdded,shortDescription,requiredAction,dueDate
 # source: https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv
 kevc_file="known_exploited_vulnerabilities.csv"
 kevc_url="https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv"
@@ -23,41 +23,41 @@ html_css="<style>body,h2 {font-family:Arial;font-size:12pt;}h2 {font-size:16pt;}
 html_head="<html><head><title>Known Exploited Vulnerabilities Catalog</title>"+html_css+"</head><body>"
 html_foot="</body></html>"
 
+def errorMsg(msg,type,status):
+    if type == "api":
+        data={}
+        if status:
+            data['status']="ok"
+        else:
+            data['status']="fail"
+        data['message']=str(msg)
+        ret=json.dumps(data)
+    else:
+        print(msg)
+        if status:
+            ret=0
+        else:
+            ret=-1
+    return ret
+
 def checkUpdate(mode):
     try:
         x=requests.head(kevc_url)
     except requests.exceptions.RequestException as e:
-        msg="WARNING: Error during update check for newer Version of "+str(kevc_file)
-        if mode == "api":
-            data={}
-            data['status']="fail"
-            data['message']=str(msg)
-            ret=json.dumps(data)
-        else:
-            print(msg)
-            print("Error Message: "+str(e))
-            ret=-1
+        ret=errorMsg("WARNING: Error during update check for newer Version, error code: "+str(e),mode,False)
+        return ret
+    if not x.ok:
+        ret=errorMsg("ERROR: Error during update check for newer Version, error code: "+str(x.status_code),mode,False)
         return ret
     updatemsg="update not needed"
     ftime=0
     if os.path.isfile(home_file_dir+kevc_file):
         ftime=os.path.getctime(home_file_dir+kevc_file)
-
     if time.mktime(datetime.datetime.strptime(x.headers['Last-Modified'][:-4], "%a, %d %b %Y %H:%M:%S").timetuple()) > ftime:
         try:
             updatefile=requests.get(kevc_url)
         except Exception as e:
-            msg="WARNING: cant load new File from URL: "+str(kevc_url)
-            if mode == "api":
-                data={}
-                data['status']="fail"
-                data['message']=str(msg)
-                data['exception']=str(e)
-                ret=json.dumps(data)
-            else:
-                print(str(msg))
-                print(str(e))
-                ret=-1
+            ret=errorMsg("WARNING: cant load new File from "+str(kevc_url)+", error code: "+str(e),mode,False)
             return ret
         try:
             with open(str(home_file_dir+kevc_file)+".new","wb") as fp:
@@ -66,26 +66,10 @@ def checkUpdate(mode):
                     os.rename(home_file_dir+kevc_file,str(home_file_dir+kevc_file)+".old")
             os.rename(str(home_file_dir+kevc_file)+".new",home_file_dir+kevc_file)
         except Exception as e:
-            msg="WARNING: cant write new File: "+str(kevc_file)
-            if mode == "api":
-                data={}
-                data['status']="fail"
-                data['message']=str(msg)
-                data['exception']=str(e)
-                ret=json.dumps(data)
-            else:
-                print(msg)
-                print(str(e))
-                ret=-1
+            ret=errorMsg("WARNING: cant write new File: "+str(kevc_file)+", error code: "+str(e),mode,False)
             return ret
         updatemsg="update successfully"
-    if mode == "api":
-        data={}
-        data['status']="ok"
-        data['message']=updatemsg
-        ret=json.dumps(data)
-    else:
-        ret=0
+    ret=errorMsg(updatemsg,mode,True)
     return ret
 
 def FileOpen(fname):
@@ -111,7 +95,6 @@ def searchObject(object,rowid):
 			data['Product']=row[2]
 			data['Vulnerability']=row[3]
 			data['Description']=row[5]
-			data['Notes']=row[8]
 			data['Fix']=row[6]
 			data['Added to List']=row[4]
 			data['Due Date']=row[7]
@@ -136,7 +119,7 @@ def root():
     csvfp=FileOpen(home_file_dir+kevc_file)
     HTML=html_head
     HTML+="<h2>Known Exploited Vulnerabilities Catalog from <a href='https://www.cisa.gov/known-exploited-vulnerabilities-catalog' target=_blank>CISA</a></h2><br>\n"
-    HTML+="Needed File can be downloaded at <a href='https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv'>https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv</a>.<br>"
+    HTML+="Needed File can be downloaded at <a href='"+str(kevc_url)+"'>"+str(kevc_url)+"</a>.<br>"
     HTML+="<br>Api is also available, see <a href='/api'>this Link for description</a><br><br>\n"
     HTML+="<table>\n"
     for row in csvfp:
