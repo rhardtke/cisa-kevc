@@ -189,7 +189,13 @@ def apiText():
 @app.route("/api/info")
 def info():
     ret=information()
-    return Response(json.dumps(ret),mimetype='application/json')
+    retCode=200
+    if 'total' in ret:
+        if ret['total'] == 0:
+            retCode=404
+    elif ret['status'] != "OK":
+        retCode=500
+    return Response(json.dumps(ret),mimetype='application/json',status=retCode)
 
 @app.route("/api/list")
 def getAll():
