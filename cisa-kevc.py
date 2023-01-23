@@ -84,35 +84,6 @@ def searchObject(object,jsonfilter) -> dict:
         return entries
     datalist=[]
     for entry in entries['vulnerabilities']:
-        if str.upper(object) in str.upper(entry[jsonfilter]) or not object:
-            data={}
-            data['cve']=entry['cveID']
-            data['vendor']=entry['vendorProject']
-            data['product']=entry['product']
-            data['vulnerability']=entry['vulnerabilityName']
-            data['description']=entry['shortDescription']
-            data['fix']=entry['requiredAction']
-            data['dateAdded']=entry['dateAdded']
-            data['dueDate']=entry['dueDate']
-            data['notes']=entry['notes']
-            datalist.append(data)
-
-    data={}
-    if not datalist:
-        data['message']=str(escape(str(object)))+" not found'"
-    data['total']=len(datalist)
-    data['status']="OK"
-    data['results']=datalist
-    return data
-
-
-
-def listAll() -> dict:
-    entries=FileOpen(home_file_dir+kevc_file,"api")
-    if not "vulnerabilities" in entries:
-        return entries
-    datalist=[]
-    for entry in entries['vulnerabilities']:
         data={}
         data['cve']=entry['cveID']
         data['vendor']=entry['vendorProject']
@@ -123,9 +94,15 @@ def listAll() -> dict:
         data['dateAdded']=entry['dateAdded']
         data['dueDate']=entry['dueDate']
         data['notes']=entry['notes']
-        datalist.append(data)
+        if not jsonfilter and not object:
+            datalist.append(data)
+        else:
+            if str.upper(object) in str.upper(entry[jsonfilter]):
+                datalist.append(data)
 
     data={}
+    if not datalist:
+        data['message']=str(escape(str(object)))+" not found'"
     data['total']=len(datalist)
     data['status']="OK"
     data['results']=datalist
@@ -149,7 +126,7 @@ def root():
     entries=FileOpen(home_file_dir+kevc_file,"api")
     HTML=html_head
     HTML+="<h2>Known Exploited Vulnerabilities Catalog from <a href='https://www.cisa.gov/known-exploited-vulnerabilities-catalog' target=_blank>CISA</a></h2><br>\n"
-    HTML+="Needed File can be downloaded at <a href='"+str(kevc_url)+"'>"+str(kevc_url)+"</a>.<br>"
+    HTML+=f"Needed File can be downloaded at <a href='{kevc_url}'>{kevc_url}</a>.<br>"
     HTML+="<br>Api is also available, see <a href='/api'>this Link for description</a><br><br>\n"
     HTML+="<table>\n"
     HTML+="<tr><td>CVE</td><td>Vendor</td><td>Product</td><td>Vulnerability</td><td>Description</td><td>Action</td><td>date Added</td><td>due Date</td></tr>\n"
@@ -193,7 +170,7 @@ def info():
 
 @app.route("/api/list")
 def getAll():
-    ret=listAll()
+    ret=ret=searchObject('','')
     retCode=200
     if 'total' in ret:
         if ret['total'] == 0:
