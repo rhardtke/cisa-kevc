@@ -78,7 +78,7 @@ def FileOpen(fname,mode):
     except IOError:
         return errorMsg(f"ERROR: no such file '{fname}'.",mode,False)
 
-def searchObject(object,jsonfilter) -> dict:
+def searchObject(objstring,jsonfilter) -> dict:
     entries=FileOpen(home_file_dir+kevc_file,"api")
     if not "vulnerabilities" in entries:
         return entries
@@ -94,15 +94,17 @@ def searchObject(object,jsonfilter) -> dict:
         data['dateAdded']=entry['dateAdded']
         data['dueDate']=entry['dueDate']
         data['notes']=entry['notes']
-        if not jsonfilter and not object:
+        if not jsonfilter and not objstring:
             datalist.append(data)
-        else:
-            if str.upper(object) in str.upper(entry[jsonfilter]):
+        elif not jsonfilter and objstring:
+            if objstring in entry['vendorProject'] or objstring in entry['product'] or objstring in entry['vulnerabilityName'] or objstring in entry['shortDescription'] or objstring in entry['requiredAction'] or objstring in entry['notes']:
                 datalist.append(data)
+        elif str.upper(objstring) in str.upper(entry[jsonfilter]):
+            datalist.append(data)
 
     data={}
     if not datalist:
-        data['message']=str(escape(str(object)))+" not found'"
+        data['message']=str(escape(str(objstring)))+" not found'"
     data['total']=len(datalist)
     data['status']="OK"
     data['results']=datalist
@@ -120,9 +122,40 @@ def information() -> dict:
         }
     return datalist
 
+def searchObjectDate(searchdate,field,dateselector) -> Response:
+    entries=FileOpen(home_file_dir+kevc_file,"api")
+    if not "vulnerabilities" in entries:
+        return entries
+    searchdate=datetime.datetime.strptime(searchdate, '%Y-%m-%d').date()
+    datalist=[]
+    for entry in entries['vulnerabilities']:
+        data={}
+        data['cve']=entry['cveID']
+        data['vendor']=entry['vendorProject']
+        data['product']=entry['product']
+        data['vulnerability']=entry['vulnerabilityName']
+        data['description']=entry['shortDescription']
+        data['fix']=entry['requiredAction']
+        data['dateAdded']=entry['dateAdded']
+        data['dueDate']=entry['dueDate']
+        data['notes']=entry['notes']
+        if dateselector == 'after':
+            if searchdate <= datetime.datetime.strptime(entry[field], '%Y-%m-%d').date():
+                    datalist.append(data)
+        if dateselector == 'before':
+            if searchdate >= datetime.datetime.strptime(entry[field], '%Y-%m-%d').date():
+                    datalist.append(data)
+    data={}
+    if not datalist:
+        data['message']=str(escape(str(searchdate)))+" not found'"
+    data['total']=len(datalist)
+    data['status']="OK"
+    data['results']=datalist
+    return data
+
 app=Flask(__name__)
 @app.route("/",methods=["GET"])
-def root():
+def root() -> str:
     entries=FileOpen(home_file_dir+kevc_file,"api")
     HTML=html_head
     HTML+="<h2>Known Exploited Vulnerabilities Catalog from <a href='https://www.cisa.gov/known-exploited-vulnerabilities-catalog' target=_blank>CISA</a></h2><br>\n"
@@ -150,21 +183,26 @@ def root():
     return str(HTML)
 
 @app.route("/api")
-def apiText():
+def apiText() -> Response:
     data={}
     data['/api']="This Message"
     data['/api/info']="Information about Catalog"
     data['/api/update']="update Known Exploited Vulnerabilities Catalog"
     data['/api/list']="returns all entries"
     data['/api/cve/<CVE>']="returns details from <CVE>"
+    data['/api/search/<search>']="returns list with all entries for <search> in 'shortDescription','vendorProject','product','requiredAction','vulnerabilityName','note'"
     data['/api/description/<search>']="returns list with all entries for <search> in 'shortDescription'"
-    data['/api/vendor/<vendor>']="returns list with all entries for <vendor> in 'vendorProject"
+    data['/api/vendor/<vendor>']="returns list with all entries for <vendor> in 'vendorProject'"
     data['/api/product/<product>']="returns list with all entries for <product> in 'product'"
+    data['/api/dueDate/after/<date>']="returns list with all entries with due Date after <YYYY-MM-DD>"
+    data['/api/dueDate/before/<date>']="returns list with all entries with due Date before <YYYY-MM-DD>"
+    data['/api/addDate/after/<date>']="returns list with all entries with added after <YYYY-MM-DD>"
+    data['/api/addDate/before/<date>']="returns list with all entries with added before <YYYY-MM-DD>"
     data['status']="OK"
     return Response(json.dumps(data),mimetype='application/json')
 
 @app.route("/api/info")
-def info():
+def info() -> Response:
     ret=information()
     retCode=200
     if 'total' in ret:
@@ -175,7 +213,7 @@ def info():
     return Response(json.dumps(ret),mimetype='application/json',status=retCode)
 
 @app.route("/api/list")
-def getAll():
+def getAll() -> Response:
     ret=ret=searchObject('','')
     retCode=200
     if 'total' in ret:
@@ -186,7 +224,7 @@ def getAll():
     return Response(json.dumps(ret),mimetype='application/json',status=retCode)
 
 @app.route("/api/cve/<id>")
-def searchCVE(id):
+def searchCVE(id) -> Response:
     ret=searchObject(id,'cveID')
     retCode=200
     if 'total' in ret:
@@ -196,8 +234,19 @@ def searchCVE(id):
         retCode=500
     return Response(json.dumps(ret),mimetype='application/json',status=retCode)
 
+@app.route("/api/search/<id>")
+def searchAll(id) -> Response:
+    ret=searchObject(id,'')
+    retCode=200
+    if 'total' in ret:
+        if ret['total'] == 0:
+            retCode=404
+    elif ret['status'] != "OK":
+        retCode=500
+    return Response(json.dumps(ret),mimetype='application/json',status=retCode)
+
 @app.route("/api/vendor/<id>")
-def searchVendor(id):
+def searchVendor(id) -> Response:
     ret=searchObject(id,'vendorProject')
     retCode=200
     if 'total' in ret:
@@ -208,7 +257,7 @@ def searchVendor(id):
     return Response(json.dumps(ret),mimetype='application/json',status=retCode)
 
 @app.route("/api/product/<id>")
-def searchProduct(id):
+def searchProduct(id) -> Response:
     ret=searchObject(id,'product')
     retCode=200
     if 'total' in ret:
@@ -218,8 +267,53 @@ def searchProduct(id):
         retCode=500
     return Response(json.dumps(ret),mimetype='application/json',status=retCode)
 
+@app.route("/api/duedate/before/<id>")
+def searchBeforeDueDate(id) -> Response:
+    ret=searchObjectDate(id,'dueDate','before')
+    retCode=200
+    if 'total' in ret:
+        if ret['total'] == 0:
+            retCode=404
+    elif ret['status'] != "OK":
+        retCode=500
+    return Response(json.dumps(ret),mimetype='application/json',status=retCode)
+
+@app.route("/api/duedate/after/<id>")
+def searchAfterDueDate(id) -> Response:
+    ret=searchObjectDate(id,'dueDate','after')
+    retCode=200
+    if 'total' in ret:
+        if ret['total'] == 0:
+            retCode=404
+    elif ret['status'] != "OK":
+        retCode=500
+    return Response(json.dumps(ret),mimetype='application/json',status=retCode)
+
+@app.route("/api/adddate/before/<id>")
+def searchBeforeAddDate(id) -> Response:
+    ret=searchObjectDate(id,'dateAdded','before')
+    retCode=200
+    if 'total' in ret:
+        if ret['total'] == 0:
+            retCode=404
+    elif ret['status'] != "OK":
+        retCode=500
+    return Response(json.dumps(ret),mimetype='application/json',status=retCode)
+
+@app.route("/api/adddate/after/<id>")
+def searchAfterAddDate(id) -> Response:
+    ret=searchObjectDate(id,'dateAdded','after')
+    retCode=200
+    if 'total' in ret:
+        if ret['total'] == 0:
+            retCode=404
+    elif ret['status'] != "OK":
+        retCode=500
+    return Response(json.dumps(ret),mimetype='application/json',status=retCode)
+
+
 @app.route("/api/update")
-def updateFile():
+def updateFile() -> Response:
     ret=checkUpdate("api")
     retCode=200
     if ret['status'] != "OK":
